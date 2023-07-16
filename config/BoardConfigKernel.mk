@@ -1,5 +1,4 @@
-# Copyright (C) 2018-2022 The LineageOS Project
-#           (C) 2018-2020 The PixelExperience Project
+# Copyright (C) 2018-2023 The LineageOS Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,6 +31,8 @@
 #   TARGET_KERNEL_CLANG_PATH           = Clang prebuilts path, optional
 #
 #   TARGET_KERNEL_LLVM_BINUTILS        = Use LLVM binutils, defaults to true
+#   TARGET_KERNEL_NO_GCC               = Fully compile the kernel without GCC.
+#                                        Defaults to false
 #   TARGET_KERNEL_VERSION              = Reported kernel version in top level kernel
 #                                        makefile. Can be overriden in device trees
 #                                        in the event of prebuilt kernel.
@@ -68,10 +69,20 @@ else
     KERNEL_ARCH := $(TARGET_KERNEL_ARCH)
 endif
 
-TARGET_KERNEL_HEADERS ?= $(TARGET_KERNEL_SOURCE)
 KERNEL_VERSION := $(shell grep -s "^VERSION = " $(TARGET_KERNEL_SOURCE)/Makefile | awk '{ print $$3 }')
 KERNEL_PATCHLEVEL := $(shell grep -s "^PATCHLEVEL = " $(TARGET_KERNEL_SOURCE)/Makefile | awk '{ print $$3 }')
 TARGET_KERNEL_VERSION ?= $(shell echo $(KERNEL_VERSION)"."$(KERNEL_PATCHLEVEL))
+
+# 5.10+ can fully compile without GCC by default
+ifeq ($(shell expr $(KERNEL_VERSION) \>= 5), 1)
+    ifeq ($(shell expr $(KERNEL_PATCHLEVEL) \>= 10), 1)
+        TARGET_KERNEL_NO_GCC ?= true
+    endif
+endif
+
+ifeq ($(TARGET_KERNEL_NO_GCC), true)
+    KERNEL_NO_GCC := true
+endif
 
 ifneq ($(TARGET_KERNEL_CLANG_VERSION),)
     KERNEL_CLANG_VERSION := clang-$(TARGET_KERNEL_CLANG_VERSION)
@@ -97,8 +108,7 @@ KERNEL_MAKE_FLAGS += -j$(shell getconf _NPROCESSORS_ONLN)
 TOOLS_PATH_OVERRIDE := \
     PERL5LIB=$(BUILD_TOP)/prebuilts/tools-lineage/common/perl-base
 
-# 5.10+ can fully compile without gcc
-ifeq (,$(filter 5.10, $(TARGET_KERNEL_VERSION)))
+ifneq ($(KERNEL_NO_GCC), true)
     GCC_PREBUILTS := $(BUILD_TOP)/prebuilts/gcc/$(HOST_PREBUILT_TAG)
     # arm64 toolchain
     KERNEL_TOOLCHAIN_arm64 := $(GCC_PREBUILTS)/aarch64/aarch64-linux-android-4.9/bin
@@ -156,9 +166,9 @@ ifeq (,$(filter 5.10, $(TARGET_KERNEL_VERSION)))
 
     ifeq ($(KERNEL_ARCH),arm64)
         # Add 32-bit GCC to PATH so that arm-linux-androidkernel-as is available for CONFIG_COMPAT_VDSO
-        TOOLS_PATH_OVERRIDE += PATH=$(BUILD_TOP)/prebuilts/tools-custom/$(HOST_PREBUILT_TAG)/bin:$(KERNEL_TOOLCHAIN_arm):$$PATH
+        TOOLS_PATH_OVERRIDE += PATH=$(BUILD_TOP)/prebuilts/tools-lineage/$(HOST_PREBUILT_TAG)/bin:$(KERNEL_TOOLCHAIN_arm):$$PATH
     else
-        TOOLS_PATH_OVERRIDE += PATH=$(BUILD_TOP)/prebuilts/tools-custom/$(HOST_PREBUILT_TAG)/bin:$$PATH
+        TOOLS_PATH_OVERRIDE += PATH=$(BUILD_TOP)/prebuilts/tools-lineage/$(HOST_PREBUILT_TAG)/bin:$$PATH
     endif
 
     # Set the full path to the clang command and LLVM binutils
